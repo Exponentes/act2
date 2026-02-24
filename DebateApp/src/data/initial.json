@@ -1,0 +1,14 @@
+[
+  {
+    "id": 0,
+    "titulo": "Bienvenida",
+    "descripcion": "Pantalla de espera.",
+    "src": "/"
+  },
+  {
+    "id": 2,
+    "titulo": "Debate",
+    "descripcion": "Una serie de preguntas, una seleccion concreta. Defiende tu bando.",
+    "src": "/actividades/debate"
+  }
+]

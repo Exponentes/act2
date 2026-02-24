@@ -1,0 +1,12 @@
+[
+  {
+    "id": 1,
+    "pregunta": "¿Qué prefieres para trabajar?",
+    "opciones": ["Team Frío ❄️", "Team Calor ☀️"]
+  },
+  {
+    "id": 2,
+    "pregunta": "¿Café o Té?",
+    "opciones": ["Café ☕", "Té 🍵"]
+  }
+]
