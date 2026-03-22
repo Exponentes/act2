@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { socket } from '../../../socket';
 
 const AdminDebate = () => {
   const navigate = useNavigate();
@@ -8,21 +9,28 @@ const AdminDebate = () => {
   const [timeLeft, setTimeLeft] = useState(180);
   const [isActive, setIsActive] = useState(false);
   const [parejaActual, setParejaActual] = useState(null);
+  const [votacionActiva, setVotacionActiva] = useState(false);
+  const [votos, setVotos] = useState({ userA: 0, userB: 0 });
   const timerRef = useRef(null);
 
-  // --- SINCRONIZACIÓN CON EL BUZÓN GLOBAL ---
   useEffect(() => {
-    const sincronizarDatos = () => {
-      const datos = JSON.parse(localStorage.getItem('cola_debate') || '[]');
-      setParticipantes(datos);
-    };
+    socket.connect();
+    socket.emit('join_room', { role: 'admin' });
 
-    sincronizarDatos();
-    window.addEventListener('storage', sincronizarDatos);
-    return () => window.removeEventListener('storage', sincronizarDatos);
+    socket.on('update_cola', (lista) => {
+      setParticipantes(lista);
+    });
+
+    socket.on('vote_update', (conteo) => {
+      setVotos(conteo);
+    });
+
+    return () => {
+      socket.off('update_cola');
+      socket.off('vote_update');
+    };
   }, []);
 
-  // --- LÓGICA DEL TEMPORIZADOR ---
   useEffect(() => {
     if (isActive && timeLeft > 0) {
       timerRef.current = setInterval(() => setTimeLeft(t => t - 1), 1000);
@@ -35,7 +43,6 @@ const AdminDebate = () => {
   const toggleTimer = () => setIsActive(!isActive);
   const resetTimer = () => { setIsActive(false); setTimeLeft(180); };
   
-  // NUEVAS FUNCIONES DE TIEMPO
   const añadirTiempo = (segundos) => setTimeLeft(t => t + segundos);
   const quitarTiempo = (segundos) => setTimeLeft(t => Math.max(0, t - segundos));
 
@@ -46,6 +53,19 @@ const AdminDebate = () => {
     setFase('duelo');
     resetTimer();
     setIsActive(true);
+    setVotacionActiva(false);
+    setVotos({ userA: 0, userB: 0 });
+  };
+
+  const iniciarVotacion = () => {
+    setVotacionActiva(true);
+    setVotos({ userA: 0, userB: 0 });
+    socket.emit('start_vote', { candidatos: parejaActual });
+  };
+
+  const cerrarVotacion = () => {
+    setVotacionActiva(false);
+    socket.emit('end_vote', {});
   };
 
   return (
@@ -53,11 +73,9 @@ const AdminDebate = () => {
       <div className="absolute top-0 w-full p-8 flex justify-between items-start pointer-events-none">
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-6 rounded-3xl pointer-events-auto">
           <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 text-center">Cronómetro</p>
-          <div className="text-5xl font-mono font-black tabular-nums">
+          <div className="text-5xl font-mono font-black tabular-nums border-b border-white/20 pb-4 mb-4">
             {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
           </div>
-          
-          {/* Lógica de control de tiempo recuperada */}
           <div className="grid grid-cols-2 gap-2 mt-4">
             <button onClick={() => añadirTiempo(30)} className="bg-white/10 hover:bg-white/20 py-1 rounded text-[9px] font-bold">+30s</button>
             <button onClick={() => quitarTiempo(30)} className="bg-white/10 hover:bg-white/20 py-1 rounded text-[9px] font-bold">-30s</button>
@@ -68,6 +86,19 @@ const AdminDebate = () => {
               Reiniciar
             </button>
           </div>
+          {fase === 'duelo' && (
+            <div className="mt-6 pt-4 border-t border-white/20 text-center">
+              {!votacionActiva ? (
+                <button onClick={iniciarVotacion} className="w-full bg-indigo-500 text-white text-[10px] font-black py-3 rounded-lg hover:bg-indigo-400 uppercase">
+                  Iniciar Votación Público
+                </button>
+              ) : (
+                <button onClick={cerrarVotacion} className="w-full bg-red-500 text-white text-[10px] font-black py-3 rounded-lg hover:bg-red-400 uppercase animate-pulse">
+                  Finalizar Votación
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="text-right">
@@ -83,7 +114,7 @@ const AdminDebate = () => {
               <div className="flex justify-between items-end mb-10">
                 <div>
                   <h2 className="text-4xl font-black mb-2">PARTICIPANTES</h2>
-                  <p className="text-slate-400 font-medium">Esperando que los usuarios envíen sus posturas...</p>
+                  <p className="text-slate-400 font-medium">Esperando que los usuarios envíen sus posturas por el Socket...</p>
                 </div>
                 <div className="text-right">
                   <span className="text-5xl font-black text-indigo-500">{participantes.length}</span>
@@ -94,7 +125,7 @@ const AdminDebate = () => {
               <div className="grid grid-cols-4 gap-4 mb-12 max-h-[40vh] overflow-y-auto pr-4 custom-scrollbar">
                 {participantes.map((p, idx) => (
                   <div key={idx} className="bg-white/5 border border-white/10 p-4 rounded-2xl animate-in zoom-in duration-300">
-                    <p className="text-xs text-indigo-400 font-black mb-1 uppercase tracking-tighter">Conectado</p>
+                    <p className="text-xs text-indigo-400 font-black mb-1 uppercase tracking-tighter">Socket OK</p>
                     <p className="font-bold truncate text-lg uppercase">{p.nombre}</p>
                   </div>
                 ))}
@@ -110,26 +141,40 @@ const AdminDebate = () => {
             </div>
           ) : (
             <div className="animate-in slide-in-from-bottom duration-700">
-               <div className="flex items-center gap-12">
-                    <div className="flex-1 text-center p-12 bg-gradient-to-b from-indigo-500/10 to-transparent border border-indigo-500/20 rounded-[3rem]">
-                      <p className="text-indigo-400 text-xs font-black mb-2 uppercase tracking-widest italic">Combatiente 1</p>
-                      <h3 className="text-6xl font-black mb-6 uppercase tracking-tighter">{parejaActual.userA.nombre}</h3>
-                      <div className="inline-block px-6 py-2 bg-indigo-500 rounded-full text-sm font-black uppercase">
-                        {parejaActual.userA.respuestas[1] || "Bando A"}
-                      </div>
-                    </div>
-                    <div className="text-8xl font-black italic opacity-20 select-none">VS</div>
-                    <div className="flex-1 text-center p-12 bg-gradient-to-b from-orange-500/10 to-transparent border border-orange-500/20 rounded-[3rem]">
-                      <p className="text-orange-400 text-xs font-black mb-2 uppercase tracking-widest italic">Combatiente 2</p>
-                      <h3 className="text-6xl font-black mb-6 uppercase tracking-tighter">{parejaActual.userB.nombre}</h3>
-                      <div className="inline-block px-6 py-2 bg-orange-500 rounded-full text-sm font-black uppercase">
-                        {parejaActual.userB.respuestas[1] || "Bando B"}
-                      </div>
-                    </div>
+              <div className="flex items-center gap-12">
+                <div className="flex-1 text-center p-12 bg-gradient-to-b from-indigo-500/10 to-transparent border border-indigo-500/20 rounded-[3rem] relative">
+                  <p className="text-indigo-400 text-xs font-black mb-2 uppercase tracking-widest italic">Combatiente 1</p>
+                  <h3 className="text-6xl font-black mb-6 uppercase tracking-tighter">{parejaActual.userA.nombre}</h3>
+                  <div className="inline-block px-6 py-2 bg-indigo-500 rounded-full text-sm font-black uppercase mb-4">
+                    {parejaActual.userA.respuestas[1] || "Bando A"}
                   </div>
-                  <button onClick={() => setFase('cuestionario')} className="mt-20 w-full text-slate-500 hover:text-white font-black text-xs uppercase tracking-[0.3em]">
-                    ← Volver a la lista / Siguiente Duelo
-                  </button>
+                  {votacionActiva && (
+                    <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-indigo-600 px-8 py-4 rounded-full border-4 border-slate-900 shadow-xl">
+                      <p className="text-[10px] font-black tracking-widest uppercase mb-1">Votos</p>
+                      <p className="text-4xl font-black">{votos.userA}</p>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="text-8xl font-black italic opacity-20 select-none">VS</div>
+                
+                <div className="flex-1 text-center p-12 bg-gradient-to-b from-orange-500/10 to-transparent border border-orange-500/20 rounded-[3rem] relative">
+                  <p className="text-orange-400 text-xs font-black mb-2 uppercase tracking-widest italic">Combatiente 2</p>
+                  <h3 className="text-6xl font-black mb-6 uppercase tracking-tighter">{parejaActual.userB.nombre}</h3>
+                  <div className="inline-block px-6 py-2 bg-orange-500 rounded-full text-sm font-black uppercase mb-4">
+                    {parejaActual.userB.respuestas[1] || "Bando B"}
+                  </div>
+                  {votacionActiva && (
+                    <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-orange-600 px-8 py-4 rounded-full border-4 border-slate-900 shadow-xl">
+                      <p className="text-[10px] font-black tracking-widest uppercase mb-1">Votos</p>
+                      <p className="text-4xl font-black">{votos.userB}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => setFase('cuestionario')} className="mt-24 w-full text-slate-500 hover:text-white font-black text-xs uppercase tracking-[0.3em]">
+                ← Volver a la lista / Siguiente Duelo
+              </button>
             </div>
           )}
         </div>

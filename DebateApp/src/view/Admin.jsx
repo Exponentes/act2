@@ -1,12 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Peer } from 'peerjs';
 import { useNavigate } from 'react-router-dom';
 import actividadesData from '../data/initial.json';
-
-// --- VARIABLES GLOBALES (Singleton) ---
-// Al estar fuera del componente, sobreviven aunque el Admin navegue a otra pantalla
-let globalPeer = null;
-let conexionesGlobales = [];
+import { socket } from '../socket';
 
 const AdminPanel = () => {
   const navigate = useNavigate();
@@ -14,61 +9,26 @@ const AdminPanel = () => {
     const saved = localStorage.getItem('actividad_seleccionada');
     return saved ? JSON.parse(saved) : null;
   });
-  const [numConectados, setNumConectados] = useState(conexionesGlobales.length);
+  const [numConectados, setNumConectados] = useState(0);
 
   useEffect(() => {
-    // 1. Inicializar el servidor Peer SOLO si no existe aún
-    if (!globalPeer || globalPeer.destroyed) {
-      globalPeer = new Peer('sala-debate-unica-123');
+    socket.connect();
 
-      globalPeer.on('connection', (conn) => {
-        conn.on('open', () => {
-          // --- SUSURRO AUTOMÁTICO DINÁMICO ---
-          // Leemos del localStorage en el momento exacto para no depender de estados viejos de React
-          const actividadGuardada = JSON.parse(localStorage.getItem('actividad_seleccionada'));
-          if (actividadGuardada) {
-            conn.send({ action: 'REDIRECT', url: actividadGuardada.src });
-          }
+    socket.on('connect', () => {
+      socket.emit('join_room', { role: 'admin' });
+      const actividadGuardada = JSON.parse(localStorage.getItem('actividad_seleccionada'));
+      if (actividadGuardada) {
+         socket.emit('redirect_users', { url: actividadGuardada.src });
+      }
+    });
 
-          if (!conexionesGlobales.find(c => c.peer === conn.peer)) {
-            conexionesGlobales.push(conn);
-            // Avisar a la interfaz que hay un nuevo dispositivo
-            window.dispatchEvent(new CustomEvent('update_conexiones'));
-          }
-        });
-
-        // --- RECEPCIÓN DE DATOS EN BACKGROUND ---
-        conn.on('data', (data) => {
-          if (data.type === 'SUBMIT_ANSWERS') {
-            const actual = JSON.parse(localStorage.getItem('cola_debate') || '[]');
-            const existe = actual.find(p => p.nombre === data.nombre);
-            
-            if (!existe) {
-              const nuevaLista = [...actual, { nombre: data.nombre, respuestas: data.respuestas }];
-              localStorage.setItem('cola_debate', JSON.stringify(nuevaLista));
-              // Esto despierta a AdminDebate.jsx si el administrador lo está viendo
-              window.dispatchEvent(new Event('storage'));
-            }
-            conn.send({ type: 'CONFIRM_RECEIPT' });
-          }
-        });
-
-        conn.on('close', () => {
-          conexionesGlobales = conexionesGlobales.filter(c => c.peer !== conn.peer);
-          window.dispatchEvent(new CustomEvent('update_conexiones'));
-        });
-      });
-    }
-
-    // 2. Sincronizar la UI del contador de dispositivos
-    const updateConectados = () => setNumConectados(conexionesGlobales.length);
-    window.addEventListener('update_conexiones', updateConectados);
-    updateConectados(); // Carga inicial al montar el componente
+    socket.on('update_conexiones', (count) => {
+      setNumConectados(count);
+    });
 
     return () => {
-      // IMPORTANTE: NO destruimos el globalPeer aquí. 
-      // Solo dejamos de escuchar los cambios en la UI porque nos vamos a otra pantalla.
-      window.removeEventListener('update_conexiones', updateConectados);
+      socket.off('connect');
+      socket.off('update_conexiones');
     };
   }, []);
 
@@ -76,21 +36,14 @@ const AdminPanel = () => {
     setActividadActiva(actividad);
     localStorage.setItem('actividad_seleccionada', JSON.stringify(actividad));
     
-    // Usamos el array global para enviar la orden a todos
-    conexionesGlobales.forEach(conn => {
-      if (conn.open) {
-        conn.send({ action: 'REDIRECT', url: actividad.src });
-      }
-    });
+    socket.emit('redirect_users', { url: actividad.src });
   };
 
   const resetearTodo = () => {
     localStorage.removeItem('actividad_seleccionada');
     localStorage.removeItem('cola_debate'); 
     setActividadActiva(null);
-    conexionesGlobales.forEach(conn => {
-      if (conn.open) conn.send({ action: 'RESET' });
-    });
+    socket.emit('clear_cache', {});
   };
 
   return (

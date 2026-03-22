@@ -1,64 +1,50 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Peer } from 'peerjs';
+import { socket } from '../socket';
 
 const Principal = () => {
   const navigate = useNavigate();
   const [status, setStatus] = useState('Sincronizando con el servidor...');
   const [connected, setConnected] = useState(false);
-  const peerRef = useRef(null);
 
   useEffect(() => {
     // --- 1. PERSISTENCIA INICIAL ---
-    // Si el usuario refresca y ya estaba en una actividad, lo mandamos de vuelta
     const savedPath = localStorage.getItem('current_activity_path');
     if (savedPath && savedPath !== '/') {
       navigate(savedPath);
       return;
     }
 
-    // --- 2. CONEXIÓN P2P ---
-    peerRef.current = new Peer();
+    // --- 2. CONEXIÓN SOCKET.IO ---
+    socket.connect();
 
-    peerRef.current.on('open', (id) => {
-      setStatus('Buscando señal del host...');
-      conectarAlAdmin();
+    socket.on('connect', () => {
+      setConnected(true);
+      setStatus('Conectado al Host. Esperando...');
+      socket.emit('join_room', { role: 'viewer' });
     });
 
-    const conectarAlAdmin = () => {
-      const conn = peerRef.current.connect('sala-debate-unica-123', { reliable: true });
+    socket.on('redirect', (data) => {
+      localStorage.setItem('current_activity_path', data.url);
+      navigate(data.url);
+    });
 
-      conn.on('open', () => {
-        setConnected(true);
-        setStatus('Conectado. Esperando instrucciones...');
-      });
+    socket.on('clear_cache', () => {
+      localStorage.removeItem('current_activity_path');
+      window.location.reload();
+    });
 
-      conn.on('data', (data) => {
-        // Recibir orden de navegación
-        if (data.action === 'REDIRECT') {
-          localStorage.setItem('current_activity_path', data.url);
-          navigate(data.url);
-        }
-        // Recibir orden de reset
-        if (data.action === 'CLEAR_CACHE') {
-          localStorage.removeItem('current_activity_path');
-          window.location.reload();
-        }
-      });
+    socket.on('disconnect', () => {
+      setConnected(false);
+      setStatus('Host no encontrado. Reintentando...');
+    });
 
-      conn.on('error', (err) => {
-        setConnected(false);
-        setStatus('Host no encontrado. Reintentando...');
-        setTimeout(conectarAlAdmin, 5000);
-      });
-      
-      conn.on('close', () => {
-        setConnected(false);
-        setTimeout(conectarAlAdmin, 3000);
-      });
+    return () => {
+      socket.off('connect');
+      socket.off('redirect');
+      socket.off('clear_cache');
+      socket.off('disconnect');
     };
-
-    return () => peerRef.current?.destroy();
   }, [navigate]);
 
   return (
@@ -71,7 +57,7 @@ const Principal = () => {
       </div>
 
       <h1 className="text-white text-3xl font-black uppercase tracking-tighter mb-2">
-        {connected ? 'Sincronizado' : 'Buscando Host'}
+        {connected ? 'Sincronizado' : 'Buscando Servidor'}
       </h1>
       
       <p className={`text-sm font-medium ${connected ? 'text-indigo-100' : 'text-slate-500 animate-pulse'}`}>
@@ -79,7 +65,7 @@ const Principal = () => {
       </p>
 
       <div className="mt-20 opacity-20">
-        <p className="text-[10px] text-white font-bold tracking-[0.4em] uppercase">Status: P2P Active</p>
+        <p className="text-[10px] text-white font-bold tracking-[0.4em] uppercase">Status: Socket.io Active</p>
       </div>
     </div>
   );
