@@ -359,7 +359,7 @@ const AdminDebate = () => {
               ) : (
                 <button 
                   onClick={() => socket.emit('generate_matches', { topic: temaSeleccionado })}
-                  disabled={availableCount < 2 || !temaSeleccionado}
+                  disabled={availableCount < 1 || !temaSeleccionado}
                   className="w-full bg-indigo-600 hover:bg-indigo-500 py-8 rounded-[2rem] text-2xl font-black uppercase tracking-widest transition-all shadow-2xl shadow-indigo-600/20 disabled:opacity-20 disabled:scale-100 transform active:scale-[0.98]"
                 >
                   Generar Duelo: {temaSeleccionado ? "Lanzar Cola ⚔️" : "Selecciona un tema primero"}
@@ -382,6 +382,7 @@ const AdminDebate = () => {
                          <span className="text-orange-300 w-1/3 text-left">{m.userB.nombre} <br/>
                             <span className="text-[10px] text-slate-400">
                               ({m.userB.postura}) {m.forced && <span className="text-red-400 animate-pulse ml-1 text-[10px] border border-red-500/50 px-1 rounded bg-red-500/10">Forzado</span>}
+                              {m.isStaffWildcard && <span className="text-emerald-400 animate-pulse ml-1 text-[10px] border border-emerald-500/50 px-1 rounded bg-emerald-500/10">Staff</span>}
                             </span>
                          </span>
                        </div>
@@ -428,6 +429,7 @@ const AdminDebate = () => {
                   <div className="inline-block px-6 py-2 bg-orange-500 rounded-full text-sm font-black uppercase mb-4 shadow-lg shadow-orange-500/20">
                     {parejaActual.userB.postura}
                     {parejaActual.forced && <span className="ml-2 bg-red-500 text-white px-2 py-1 rounded text-[10px]">Forzado</span>}
+                    {parejaActual.isStaffWildcard && <span className="ml-2 bg-emerald-500 text-white px-2 py-1 rounded text-[10px]">Staff</span>}
                   </div>
                   {(votacionActiva || votos.totalVotes > 0) && (
                     <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-orange-600 px-8 py-4 rounded-full border-4 border-slate-900 shadow-xl flex items-center gap-2">

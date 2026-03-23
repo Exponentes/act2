@@ -1,2 +1,2 @@
-# act2
+# Exponentes
 Debate App

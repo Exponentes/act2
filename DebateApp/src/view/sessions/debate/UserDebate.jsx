@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { socket } from '../../../socket';
+import Leaderboard from '../../../components/Leaderboard';
 
 const StarRating = ({ value, onChange, color }) => (
   <div className="flex gap-2 justify-center mt-6">
@@ -42,7 +43,7 @@ const UserDebate = () => {
 
   useEffect(() => {
     socket.connect();
-    socket.emit('join_room', { role: 'viewer' });
+    socket.emit('join_room', { role: 'viewer', nombre: userProfile.name });
 
     socket.on('questions_ready', (qs) => {
        setQuestions(qs);
@@ -66,6 +67,10 @@ const UserDebate = () => {
       setVotoEnviado(false);
     });
     
+    socket.on('sync_vote_state', ({ hasVoted }) => {
+      setVotoEnviado(hasVoted);
+    });
+
     socket.on('vote_ended', () => {
       setVotacion(null);
       setCurrentMatch(null);
@@ -85,6 +90,7 @@ const UserDebate = () => {
       socket.off('confirm_receipt');
       socket.off('show_vs_screen');
       socket.off('vote_started');
+      socket.off('sync_vote_state');
       socket.off('vote_ended');
       socket.off('activity_finished');
       socket.off('clear_cache');
@@ -101,7 +107,7 @@ const UserDebate = () => {
 
   const enviarVoto = () => {
     setVotoEnviado(true);
-    socket.emit('submit_vote', { starsA, starsB });
+    socket.emit('submit_vote', { nombre: userProfile.name, starsA, starsB });
   };
 
   const handleRegisterName = (e) => {
@@ -223,9 +229,14 @@ const UserDebate = () => {
               
               <div className="text-8xl font-black italic text-white/20 select-none animate-pulse">VS</div>
               
-              <div className="flex-1 w-full bg-gradient-to-tl from-orange-600/20 to-transparent p-12 rounded-[3rem] border border-orange-500/30 transform transition-all hover:scale-105 animate-in slide-in-from-right duration-700 shadow-2xl">
+              <div className="flex-1 w-full relative overflow-hidden bg-gradient-to-tl from-orange-600/20 to-transparent p-12 rounded-[3rem] border border-orange-500/30 transform transition-all hover:scale-105 animate-in slide-in-from-right duration-700 shadow-2xl">
+                 {currentMatch.isStaffWildcard && (
+                   <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-black px-4 py-1 rounded-bl-xl shadow-lg uppercase tracking-widest">
+                     Comodín Staff
+                   </div>
+                 )}
                  <p className="text-orange-400 text-sm font-black tracking-widest uppercase mb-4">Combatiente 2</p>
-                 <h3 className="text-5xl font-black text-white uppercase tracking-tighter mb-4">{currentMatch.userB.nombre}</h3>
+                 <h3 className={`text-5xl font-black uppercase tracking-tighter mb-4 ${currentMatch.isStaffWildcard ? 'text-emerald-300' : 'text-white'}`}>{currentMatch.userB.nombre}</h3>
                  <span className="bg-orange-600 text-white px-6 py-2 rounded-full font-bold text-sm uppercase shadow-lg shadow-orange-600/50">{currentMatch.userB.postura}</span>
               </div>
            </div>
@@ -327,6 +338,8 @@ const UserDebate = () => {
           Enlace al Hub: OK
         </div>
       </div>
+      
+      <Leaderboard />
     </div>
   );
 };
